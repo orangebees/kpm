@@ -1,0 +1,9 @@
+# hash.csv
+遍历包内文件，保存sha512值，文件相对路径为一行，并排序，通过此文件可以使用store中的文件构建出包，也可做为包的校验信息
+## example:
+
+```
+hash,path
+e5d17ed820b32019e7d6a4808d65d3f722cefcfdae54e0e2b9b6be52812fdcfd551293aa841ef8a6ba2be9a525a2b5290ce89b1ff27b442b421ecaff2e2d292f,kpm.json
+285ef1e2a9381d26b34f49325a0a52cf9aac1b8cd788b3f948bc69c87d065e166bab2180a89f7d0ebc6131edaa36503b3d5f2d79b150ee7117bfd7b8a61efd09,main.k
+```
