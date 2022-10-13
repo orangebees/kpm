@@ -22,7 +22,7 @@ func main() {
 	// /api/v1/search?q=pkgv
 	//发布
 	// /api/v1/user/publish
-	// 强制覆盖 git push --force origin master
+	// 强制覆盖 git push --force origin main
 	api := server.NewGroupPath("/api")
 	v1 := api.NewGroupPath("/v1")
 	v1.UseBefore(func(ctx *atreugo.RequestCtx) error {
