@@ -31,9 +31,9 @@ type Require struct {
 	Integrity string `json:"integrity"`
 	//包类型 git，registry
 	Type string `json:"type"`
-	//对应git包地址
+	//git包地址
 	GitAddress string `json:"git_address,omitempty"`
-	//对应git_commit提交记录
+	//git包commit id
 	GitCommit string `json:"git_commit,omitempty"`
 }
 
@@ -89,7 +89,6 @@ func (r *Require) NewRequireFromPkgString(pkgv string, gitflag bool) error {
 				if err != nil {
 					return err
 				}
-				println(6)
 				marshal, err := json.Marshal(pkginfo)
 				if err != nil {
 					return err
@@ -100,7 +99,7 @@ func (r *Require) NewRequireFromPkgString(pkgv string, gitflag bool) error {
 				}
 				err = os.WriteFile(r.PkgInfoLocalPath(KPM_ROOT, KPM_SERVER_ADDR_PATH), marshal, 0777)
 				if err != nil {
-					println(7, r.PkgInfoLocalPath(KPM_ROOT, KPM_SERVER_ADDR_PATH), err.Error())
+					//println(7, r.PkgInfoLocalPath(KPM_ROOT, KPM_SERVER_ADDR_PATH), err.Error())
 					return err
 				}
 				err = StoreAddFile(tmp, KPM_ROOT, false)
@@ -200,7 +199,6 @@ func (r *Require) PkgDownload(kpmroot, kpmserver string) error {
 	if err != nil {
 		return err
 	}
-	println(1)
 	kpmserverpath := kpmserverurl.Host
 
 	if r.Type == "git" {
@@ -276,7 +274,7 @@ func (r *Require) PkgDownload(kpmroot, kpmserver string) error {
 		}
 		err = os.WriteFile(r.PkgInfoLocalPath(kpmroot, kpmserverpath), marshal, 0777)
 		if err != nil {
-			println(7, r.PkgInfoLocalPath(kpmroot, kpmserverpath), err.Error())
+			//println(7, r.PkgInfoLocalPath(kpmroot, kpmserverpath), err.Error())
 			return err
 		}
 		// /root/kpm/git/kcl_modules
@@ -477,15 +475,15 @@ func (r *Require) Build(kpmroot, kpmserverpath string) error {
 	path := r.PkgInfoLocalPath(kpmroot, kpmserverpath)
 	println(path)
 	file, err := os.ReadFile(path)
-	println(1)
+
 	if err != nil {
-		println(2)
+
 		return err
 	}
 	pkginfo := PkgInfo{}
 	err = json.Unmarshal(file, &pkginfo)
 	if err != nil {
-		println(3)
+
 		return err
 	}
 	//则使用本地元文件构建
@@ -495,10 +493,9 @@ func (r *Require) Build(kpmroot, kpmserverpath string) error {
 	}
 	err = pkginfo.Build(kpmroot, r.LocalPath(kpmroot, kpmserverpath))
 	if err != nil {
-		println(4, err.Error())
 		return err
 	}
-	println(5)
+
 	if pkginfo.KpmFileHash != "" {
 		readFile, err := os.ReadFile(KPM_ROOT + Separator + "store" + Separator + "v1" + Separator + "files" + Separator + HashMod([]byte(pkginfo.KpmFileHash)) + Separator + pkginfo.KpmFileHash)
 		if err != nil {

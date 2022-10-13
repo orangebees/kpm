@@ -1,22 +1,35 @@
 package main
 
 import (
+	"archive/tar"
+	"bytes"
 	"crypto/sha512"
+	"encoding/json"
+	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
+	"io"
 	"kpm/cmd/kpmserverd/application"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type PkgInfo struct {
-	PackageName    string `json:"name"`
+	//包名
+	PackageName string `json:"name"`
+	//版本
 	PackageVersion string `json:"version"`
-	PackageSize    int64  `json:"package_size"`
-	Integrity      string `json:"integrity"`
-	KpmFileHash    string `json:"kpm_file_hash,omitempty"`
+	//包大小
+	PackageSize int64 `json:"package_size"`
+	//整个项目的sha512校验和
+	Integrity string `json:"integrity"`
+	//kpmfile校验和
+	KpmFileHash string `json:"kpm_file_hash,omitempty"`
+	//kclmod的校验和
 	KclModFileHash string `json:"kcl_mod_file_hash,omitempty"`
-	//目录,排序
+	//子包
 	SubPkgPath []string `json:"sub_pkg_path"`
 	//文件信息列表
 	Files []FileInfo `json:"files"`
@@ -75,8 +88,9 @@ func NewPkgInfo(pkgName, pkgVersion, pkgPath string) (pkginfo PkgInfo) {
 		//生成校验
 
 		//fmt.Println(string(rp))
-
+		//文件相对路径
 		rph := EncodeToString(sha512.Sum512(rp))
+		//文件内容
 		fh := EncodeToString(sha512.Sum512(filebyte))
 		sum := EncodeToString(sha512.Sum512([]byte(rph + fh)))
 		sums = append(sums, sum)
@@ -167,4 +181,83 @@ func (p PkgInfo) Build(kpmroot, buildpath string) error {
 
 	}
 	return nil
+}
+
+func (p PkgInfo) CreatePublishTarByteBuffer(kpmroot string, compress string) (*bytebufferpool.ByteBuffer, error) {
+	//files/*
+	//pkginfo.json
+	pkginfojson, err := json.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+
+	b := bytebufferpool.Get()
+	defer bytebufferpool.Put(b)
+	tw := tar.NewWriter(b)
+	defer tw.Close()
+
+	//写入pkginfo.json
+	h := new(tar.Header)
+	h.Name = "pkginfo.json"
+	h.Size = int64(len(pkginfojson))
+	h.Mode = 0777
+	h.ModTime = time.Now()
+	err = tw.WriteHeader(h)
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(tw, bytes.NewReader(pkginfojson))
+	if err != nil {
+		return nil, err
+	}
+	//tar压缩
+	for i := 0; i < len(p.Files); i++ {
+		hashfilepath := kpmroot + Separator + "store" + Separator + "v1" + Separator + "files" + Separator + HashMod([]byte(p.Files[i].Integrity)) + Separator + p.Files[i].Integrity
+		f, err := os.Open(hashfilepath)
+		if err != nil {
+			return nil, err
+		}
+
+		info, err := f.Stat()
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		// 文件信息写入tar的头
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		header.Name = "files/" + p.Files[i].Integrity
+		err = tw.WriteHeader(header)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		_, err = io.Copy(tw, f)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		f.Close()
+	}
+	b2 := bytebufferpool.Get()
+	switch compress {
+	case "br":
+		_, err = fasthttp.WriteBrotliLevel(b2, b.B, fasthttp.CompressBrotliBestCompression)
+		if err != nil {
+			return nil, err
+		}
+		return b2, nil
+	case "gz":
+		_, err = fasthttp.WriteGzipLevel(b2, b.B, fasthttp.CompressBestCompression)
+		if err != nil {
+			return nil, err
+		}
+		return b2, nil
+	default:
+		b2.Write(b.B)
+	}
+	return b2, nil
 }

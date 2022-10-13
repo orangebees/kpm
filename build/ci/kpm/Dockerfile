@@ -1,4 +1,4 @@
-FROM  zhhanscn/builder:golang-1.19.1-alpine-3.16 as  builder
+FROM  zhhanscn/builder:golang-1.19.2-alpine-3.16 as  builder
 ARG COMPRESS='false'
 COPY go.mod go.sum ./
 RUN go mod download
@@ -9,6 +9,7 @@ RUN go build -trimpath -a -ldflags "-linkmode external -w -s -extldflags  -stati
 
 
 
-FROM zhhanscn/runtime-env:alpine-3.16.2-glibc-2.35-r0
+FROM zhhanscn/runtime-env:alpine-3.16.2-git-2.36.2
 COPY  --from=builder  /app/dist/ /app/
-CMD ["/app/kpm"]
+CMD ["/bin/sh"]
+

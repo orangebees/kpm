@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/savsgio/atreugo/v11"
 	_ "go.uber.org/automaxprocs"
 	"kpm/cmd/kpmserverd/application"
@@ -10,6 +9,8 @@ import (
 	"os"
 	"os/user"
 )
+
+var log = application.GetLogger()
 
 func main() {
 	err := ServerSetup()
@@ -21,42 +22,44 @@ func main() {
 	// /api/v1/search?q=pkgv
 	//发布
 	// /api/v1/user/publish
+	// 强制覆盖 git push --force origin master
 	api := server.NewGroupPath("/api")
 	v1 := api.NewGroupPath("/v1")
+	v1.UseBefore(func(ctx *atreugo.RequestCtx) error {
+		ctx.SetContentType("application/json")
+		return ctx.Next()
+	})
+	//application.NewService(service.NewMock())
 	application.NewService(service.NewDefault(application.GetSqlxClient()))
 	appService := application.GetService()
 	v1.GET("/search", func(ctx *atreugo.RequestCtx) error {
 		pkgv := ctx.RequestCtx.QueryArgs().Peek("pkgname")
-		ctx.SetBodyString(appService.SearchName(string(pkgv)))
+		if pkgv != nil {
+			ctx.SetBodyString(appService.SearchName(string(pkgv)))
+			return nil
+		}
+		subpkgname := ctx.RequestCtx.QueryArgs().Peek("subpkgname")
+		if subpkgname != nil {
+			ctx.SetBodyString(appService.SearchSubPkgName(string(subpkgname)))
+			return nil
+		}
+		ctx.SetBodyString(StdArgsWrongResp)
 		return nil
 	})
-	v1.POST("/search", func(ctx *atreugo.RequestCtx) error {
-		//tidy 搜索子包，先搜索一个最长的包，找到真正包名
-		//pkgv := ctx.RequestCtx.QueryArgs().Peek("q")
-		//ctx.SetBodyString(appService.Search(pkgv))
-		return nil
-	})
-	u := api.NewGroupPath("/u")
-	//u.GET("/publish", func(ctx *atreugo.RequestCtx) error {
-	//	//准备好发布版本
-	//	//
-	//	versionType := application.B2S(ctx.RequestCtx.QueryArgs().Peek("type"))
-	//	if versionType == "alpha" || versionType == "beta" || versionType == "rc" || versionType == "release" {
-	//
-	//	}
+	//v1.POST("/search", func(ctx *atreugo.RequestCtx) error {
 	//	return nil
 	//})
+	u := v1.NewGroupPath("/u")
 	u.POST("/publish", func(ctx *atreugo.RequestCtx) error {
 		//准备好发布版本
 		//接收数据，解压，解析，验证，更新版本，更新tag，
 		body := ctx.Request.Body()
 		if len(body) == 0 {
-			ctx.SetBodyString("")
-			ctx.SetContentType("application/json")
+			ctx.SetBodyString(StdArgsWrongResp)
 			return nil
 		}
-		ctx.SetBodyString(appService.Publish(body))
-		ctx.SetContentType("application/json")
+		compress := ctx.Request.Header.Peek("X-KPM-PKG-COMPRESS")
+		ctx.SetBodyString(appService.Publish(body, string(compress), KPM_ROOT, KPM_SERVER_ADDR, KPM_SERVER_ADDR_PATH))
 		return nil
 	})
 
@@ -65,32 +68,35 @@ func main() {
 	// /s/metadata/:pkgname/tags
 
 	s := server.NewGroupPath("/s")
+	metadatapath := KPM_ROOT + Separator + "registry" + Separator + KPM_SERVER_ADDR_PATH + Separator + "metadata"
 	//包元数据
 	s.StaticCustom("/metadata", &atreugo.StaticFS{
 		AllowEmptyRoot:     false,
-		Root:               KPM_ROOT + Separator + "registry" + Separator + KPM_SERVER_ADDR_PATH + Separator + "metadata",
+		Root:               metadatapath,
 		GenerateIndexPages: true,
 		AcceptByteRange:    false,
 		Compress:           true,
-		CompressBrotli:     true,
+		//CompressBrotli:     true,
 	})
 	//全局hash存储
+	storepath := KPM_ROOT + Separator + "store"
 	s.StaticCustom("/store", &atreugo.StaticFS{
 		AllowEmptyRoot:     false,
-		Root:               KPM_ROOT + Separator + "store",
+		Root:               storepath,
 		GenerateIndexPages: true,
 		AcceptByteRange:    false,
 		Compress:           true,
-		CompressBrotli:     true,
+		//CompressBrotli:     true,
 	})
 	//包的标签
+	tagpath := KPM_ROOT + Separator + "registry" + Separator + KPM_SERVER_ADDR_PATH + Separator + "tag"
 	s.StaticCustom("/tag", &atreugo.StaticFS{
 		AllowEmptyRoot:     false,
-		Root:               KPM_ROOT + Separator + "registry" + Separator + KPM_SERVER_ADDR_PATH + Separator + "tag",
+		Root:               tagpath,
 		GenerateIndexPages: true,
 		AcceptByteRange:    false,
 		Compress:           true,
-		CompressBrotli:     true,
+		//CompressBrotli:     true,
 	})
 	err = server.ListenAndServe()
 	if err != nil {
@@ -132,7 +138,7 @@ func ServerSetup() error {
 		KPM_ROOT+Separator+"store"+Separator+"v1"+Separator+"files",
 	)
 	if err != nil {
-		fmt.Println("初始化目录失败")
+		println("初始化目录失败")
 		return err
 	}
 	for i := 0; i < len(hextable); i++ {

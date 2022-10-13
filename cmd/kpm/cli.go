@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 	"net/url"
 	"os"
@@ -34,7 +35,6 @@ func CLI(args ...string) {
 		}
 
 	case "add":
-		//Debug("添加依赖")
 		if len(args) < 2 {
 			println(CliAddHelp)
 
@@ -58,7 +58,6 @@ func CLI(args ...string) {
 		}
 
 	case "search":
-		//Debug("在仓库搜索依赖")
 		if len(args) != 2 {
 			println(CliSearchHelp)
 			return
@@ -112,35 +111,26 @@ func CLI(args ...string) {
 
 			}
 		}
-		//Debug("验证依赖完整性")
-		//Verify()
 		//无参命令
 	case "tidy":
-		//Debug("自动查找依赖")
-		//Tidy()
 		err = CliTidy()
 		if err != nil {
 			println(err.Error())
 			return
 		}
 	case "download":
-		//Debug("通过依赖文件补全参数")
-		//Download()
 		err = CliDownload(args[1:]...)
 		if err != nil {
 			println(err.Error())
 			return
 		}
 	case "graph":
-		//Debug("通过依赖文件打印依赖图")
-		//Graph()
 		err = CliGraph()
 		if err != nil {
 			println(err.Error())
 			return
 		}
 	case "verify":
-		//Debug("验证依赖完整性")
 		err = CliVerify()
 		if err != nil {
 			println(err.Error())
@@ -148,7 +138,6 @@ func CLI(args ...string) {
 		}
 
 	default:
-		//Debug("找不到此命令")
 		println(CliNotFound)
 		println(CliHelp)
 		//弹出使用方法
@@ -200,7 +189,7 @@ func CliSetup() error {
 		KPM_ROOT+Separator+"store"+Separator+"v1"+Separator+"files",
 	)
 	if err != nil {
-		fmt.Println("初始化目录失败")
+		println("setup fail,", err.Error())
 		return err
 	}
 	for i := 0; i < len(hextable); i++ {
@@ -536,23 +525,45 @@ func CliInit(pkg string) error {
 }
 
 func CliPublish(args ...string) error {
-	pkginfo := NewPkgInfo("", "", pwd)
+	compress := "br"
+	pkgv := strings.Split(args[0], "@")
+	if len(pkgv) != 2 {
+		return errors.New("ArgsWrong")
+	}
+	pkginfo := NewPkgInfo(pkgv[0], pkgv[1], pwd)
 	//先打包目录
-	fmt.Println(pkginfo)
+	buffer, err := pkginfo.CreatePublishTarByteBuffer(KPM_ROOT, compress)
+	if err != nil {
+		return err
+	}
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.Header.SetMethod("POST")
-	req.SetRequestURI(KPM_SERVER_ADDR + "/api/v1/user/publish")
-
+	req.Header.Set("X-KPM-PKG-COMPRESS", compress)
+	req.SetHost(KPM_SERVER_ADDR_PATH)
+	req.SetRequestURI("http://127.0.0.1" + "/api/v1/u/publish")
+	req.SetBodyRaw(buffer.B)
+	bytebufferpool.Put(buffer)
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
-	if err := fasthttp.Do(req, resp); err != nil {
+	println(req.Header.String())
+	if err = fasthttp.Do(req, resp); err != nil {
 		return err
 	}
+
 	if resp.StatusCode() != 200 {
 		return errors.New("fetch " + KPM_SERVER_ADDR + " err")
 	}
+	stdresp := StdResp{}
+	err = json.Unmarshal(resp.Body(), &stdresp)
+	if err != nil {
+		return err
+	}
+	if stdresp.Code != 0 {
 
+		return errors.New("fetch " + KPM_SERVER_ADDR + " failed")
+	}
+	println("publish success!")
 	//本地生成info，服务器反馈需要上传的包hash文件，上传hash文件，服务器开始校验
 	return nil
 }
@@ -562,17 +573,16 @@ func CliSearch(args ...string) error {
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.Header.SetMethod("GET")
-	req.SetRequestURI(KPM_SERVER_ADDR + "/api/v1/search")
-	fasthttpargs := fasthttp.AcquireArgs()
-	defer fasthttp.ReleaseArgs(fasthttpargs)
-	fasthttpargs.Set("pkgname", args[0])
+	req.SetHost(KPM_SERVER_ADDR_PATH)
+	req.SetRequestURI("http://127.0.0.1" + "/api/v1/search")
+	req.URI().QueryArgs().Set("pkgname", args[0])
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
 	if err := fasthttp.Do(req, resp); err != nil {
 		return err
 	}
 	if resp.StatusCode() != 200 {
-		return errors.New("fetch " + KPM_SERVER_ADDR + " err")
+		return errors.New("fetch " + KPM_SERVER_ADDR + " failed")
 	}
 	pkgsresp := SearchPkgsResp{}
 	err := json.Unmarshal(resp.Body(), &pkgsresp)
@@ -580,17 +590,16 @@ func CliSearch(args ...string) error {
 		return err
 	}
 	if pkgsresp.Code != 0 {
-		return errors.New("fetch " + KPM_SERVER_ADDR + " err")
+		return errors.New("fetch " + KPM_SERVER_ADDR + " failed")
 	}
 	if len(pkgsresp.Data) == 0 {
-		println("Search results failed")
+		println("Search results is empty")
 		return nil
 	}
-
+	println("Name", "Version", "Description")
 	for i := 0; i < len(pkgsresp.Data); i++ {
 		println(pkgsresp.Data[i].Name, pkgsresp.Data[i].Version, pkgsresp.Data[i].Description)
 	}
-
 	return nil
 }
 

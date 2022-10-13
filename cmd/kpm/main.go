@@ -8,5 +8,4 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 	CLI(args...)
-
 }

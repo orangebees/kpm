@@ -1,4 +1,10 @@
-package main
+package response
+
+const (
+	StdOkResp        = `{"code":0,"msg":"ok"}`
+	StdErrResp       = `{"code":1,"msg":"err"}`
+	StdArgsWrongResp = `{"code":2,"msg":"ArgsWrong"}`
+)
 
 type SearchPkg struct {
 	//包名
