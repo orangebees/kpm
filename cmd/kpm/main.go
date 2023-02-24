@@ -1,11 +1,14 @@
 package main
 
 import (
-	"flag"
+	"github.com/orangebees/kpm/pkg/kpm"
+	"os"
 )
 
 func main() {
-	flag.Parse()
-	args := flag.Args()
-	CLI(args...)
+	err := kpm.CLI(os.Args...)
+	if err != nil {
+		println(err.Error())
+		return
+	}
 }
